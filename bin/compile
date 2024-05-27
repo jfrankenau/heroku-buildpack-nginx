@@ -5,11 +5,11 @@ set -eo pipefail
 
 NGINX_VERSION="1.26.2"
 NGINX_TARBALL="nginx-${NGINX_VERSION}.tar.gz"
-PCRE_VERSION="10.42"
+PCRE_VERSION="10.43"
 PCRE_TARBALL="pcre2-${PCRE_VERSION}.tar.gz"
 SIGIL_VERSION="0.10.1"
 SIGIL_TARBALL="gliderlabs-sigil_${SIGIL_VERSION}_linux_amd64.tgz"
-ZLIB_VERSION="1.3"
+ZLIB_VERSION="1.3.1"
 ZLIB_TARBALL="zlib-${ZLIB_VERSION}.tar.gz"
 
 suppress() {
@@ -80,6 +80,20 @@ if [[ ! -f "gliderlabs-sigil-amd64" ]]; then
 fi
 cp -r gliderlabs-sigil-amd64 "$BUILD_DIR/sigil/sigil"
 
+if [[ ! -d "ngx_brotli" ]]; then
+  echo "-----> Download ngx_brotli via git"
+  git clone --recurse-submodules https://github.com/google/ngx_brotli
+fi
+
+if [[ ! -f "ngx_brotli/deps/brotli/out/libbrotlienc.a" ]]; then
+  echo "-----> Compiling brotli library"
+  cd ngx_brotli/deps/brotli
+  mkdir out && cd out
+  cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_C_FLAGS="-Ofast -m64 -march=native -mtune=native -flto -funroll-loops -ffunction-sections -fdata-sections -Wl,--gc-sections" -DCMAKE_CXX_FLAGS="-Ofast -m64 -march=native -mtune=native -flto -funroll-loops -ffunction-sections -fdata-sections -Wl,--gc-sections" -DCMAKE_INSTALL_PREFIX=./installed ..
+  cmake --build . --config Release --target brotlienc
+  cd ../../../..
+fi
+
 cd "nginx-${NGINX_VERSION}"
 if [[ ! -f "${CACHE_DIR}/bin/nginx" ]]; then
   echo "-----> Compiling static nginx binary"
@@ -116,7 +130,8 @@ if [[ ! -f "${CACHE_DIR}/bin/nginx" ]]; then
     --without-mail_pop3_module \
     --without-mail_imap_module \
     --without-mail_smtp_module \
-    --with-http_realip_module
+    --with-http_realip_module \
+    --add-module=../ngx_brotli
 
   sed -i "/CFLAGS/s/ \-O //g" objs/Makefile
 
